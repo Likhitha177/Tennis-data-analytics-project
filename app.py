@@ -1,9 +1,19 @@
 import streamlit as st
 import pandas as pd
-import sqlite3
+import psycopg2
+import os
+from dotenv import load_dotenv
 
-# Connect to SQLite database file
-conn = sqlite3.connect("tennis_db.db")
+load_dotenv()
+
+
+conn = psycopg2.connect(
+    database=os.getenv("DB_NAME"),
+    user=os.getenv("DB_USER"),
+    password=os.getenv("DB_PASSWORD"),
+    host=os.getenv("DB_HOST"),
+    port=os.getenv("DB_PORT")
+)
 
 st.title("🎾 Tennis Data Analytics Dashboard")
 
