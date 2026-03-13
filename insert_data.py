@@ -1,33 +1,61 @@
-import json
+import os
+import requests
 import psycopg2
+from dotenv import load_dotenv
+
+# -------------------------
+# Load environment variables
+# -------------------------
+load_dotenv()
+
+API_KEY = os.getenv("SPORTRADAR_API_KEY")
+
+DB_NAME = os.getenv("DB_NAME")
+DB_USER = os.getenv("DB_USER")
+DB_PASSWORD = os.getenv("DB_PASSWORD")
+DB_HOST = os.getenv("DB_HOST")
+DB_PORT = os.getenv("DB_PORT")
 
 try:
-    # Connect
+
+    # -------------------------
+    # Connect to PostgreSQL
+    # -------------------------
     conn = psycopg2.connect(
-        database="tennis_db",
-        user="postgres",
-        password="raksha",
-        host="localhost",
-        port="5432"
+        database=DB_NAME,
+        user=DB_USER,
+        password=DB_PASSWORD,
+        host=DB_HOST,
+        port=DB_PORT
     )
 
     cursor = conn.cursor()
 
-    # -------------------------
-    # Insert Competitions
-    # -------------------------
+    # ======================================================
+    # 1️⃣ Fetch Competitions
+    # ======================================================
 
-    with open("competitions.json", "r", encoding="utf-8") as f:
-        data = json.load(f)
+    competitions_url = f"https://api.sportradar.com/tennis/trial/v3/en/competitions.json?api_key={API_KEY}"
+    competitions_response = requests.get(competitions_url)
 
-    for comp in data.get("competitions", []):
+    if competitions_response.status_code != 200:
+        raise Exception("Failed to fetch competitions from API")
+
+    competitions_data = competitions_response.json()
+
+    for comp in competitions_data.get("competitions", []):
+
         category = comp.get("category", {})
 
-        cursor.execute("""
-            INSERT INTO Categories (category_id, category_name)
-            VALUES (%s, %s)
-            ON CONFLICT (category_id) DO NOTHING;
-        """, (category.get("id"), category.get("name")))
+        category_id = category.get("id")
+        category_name = category.get("name", "Unknown")
+
+        if category_id:
+            cursor.execute("""
+                INSERT INTO Categories (category_id, category_name)
+                VALUES (%s, %s)
+                ON CONFLICT (category_id) DO NOTHING;
+            """, (category_id, category_name))
 
         cursor.execute("""
             INSERT INTO Competitions
@@ -36,19 +64,24 @@ try:
             ON CONFLICT (competition_id) DO NOTHING;
         """, (
             comp.get("id"),
-            comp.get("name"),
-            comp.get("type"),
-            comp.get("gender"),
+            comp.get("name", "Unknown"),
+            comp.get("type", "Unknown"),
+            comp.get("gender", "unknown"),
             comp.get("parent_id"),
-            category.get("id")
+            category_id
         ))
 
-    # -------------------------
-    # Insert Complexes
-    # -------------------------
+    # ======================================================
+    # 2️⃣ Fetch Complexes
+    # ======================================================
 
-    with open("complexes.json", "r", encoding="utf-8") as f:
-        complexes_data = json.load(f)
+    complexes_url = f"https://api.sportradar.com/tennis/trial/v3/en/complexes.json?api_key={API_KEY}"
+    complexes_response = requests.get(complexes_url)
+
+    if complexes_response.status_code != 200:
+        raise Exception("Failed to fetch complexes from API")
+
+    complexes_data = complexes_response.json()
 
     for compx in complexes_data.get("complexes", []):
 
@@ -56,9 +89,13 @@ try:
             INSERT INTO Complexes (complex_id, complex_name)
             VALUES (%s, %s)
             ON CONFLICT (complex_id) DO NOTHING;
-        """, (compx.get("id"), compx.get("name")))
+        """, (
+            compx.get("id"),
+            compx.get("name", "Unknown")
+        ))
 
         for venue in compx.get("venues", []):
+
             cursor.execute("""
                 INSERT INTO Venues
                 (venue_id, venue_name, city_name, country_name, country_code, timezone, complex_id)
@@ -66,25 +103,32 @@ try:
                 ON CONFLICT (venue_id) DO NOTHING;
             """, (
                 venue.get("id"),
-                venue.get("name"),
-                venue.get("city_name"),
-                venue.get("country_name"),
-                venue.get("country_code"),
-                venue.get("timezone"),
+                venue.get("name", "Unknown"),
+                venue.get("city_name", "Unknown"),
+                venue.get("country_name", "Unknown"),
+                venue.get("country_code", "UNK"),
+                venue.get("timezone", "Unknown"),
                 compx.get("id")
             ))
 
-    # -------------------------
-    # Insert Rankings
-    # -------------------------
+    # ======================================================
+    # 3️⃣ Fetch Rankings
+    # ======================================================
 
-    with open("rankings.json", "r", encoding="utf-8") as f:
-        rankings_data = json.load(f)
+    rankings_url = f"https://api.sportradar.com/tennis/trial/v3/en/rankings.json?api_key={API_KEY}"
+    rankings_response = requests.get(rankings_url)
+
+    if rankings_response.status_code != 200:
+        raise Exception("Failed to fetch rankings from API")
+
+    rankings_data = rankings_response.json()
 
     for ranking in rankings_data.get("rankings", []):
         for comp_rank in ranking.get("competitor_rankings", []):
 
             competitor = comp_rank.get("competitor", {})
+
+            competitor_id = competitor.get("id")
 
             cursor.execute("""
                 INSERT INTO Competitors
@@ -92,11 +136,11 @@ try:
                 VALUES (%s, %s, %s, %s, %s)
                 ON CONFLICT (competitor_id) DO NOTHING;
             """, (
-                competitor.get("id"),
-                competitor.get("name"),
-                competitor.get("country"),
-                competitor.get("country_code"),
-                competitor.get("abbreviation")
+                competitor_id,
+                competitor.get("name", "Unknown"),
+                competitor.get("country", "Unknown"),
+                competitor.get("country_code", "UNK"),
+                competitor.get("abbreviation", "UNK")
             ))
 
             cursor.execute("""
@@ -104,21 +148,22 @@ try:
                 (rank, movement, points, competitions_played, competitor_id)
                 VALUES (%s, %s, %s, %s, %s);
             """, (
-                comp_rank.get("rank"),
-                comp_rank.get("movement"),
-                comp_rank.get("points"),
-                comp_rank.get("competitions_played"),
-                competitor.get("id")
+                comp_rank.get("rank", 0),
+                comp_rank.get("movement", 0),
+                comp_rank.get("points", 0),
+                comp_rank.get("competitions_played", 0),
+                competitor_id
             ))
 
-    # Commit ONCE
+    # -------------------------
+    # Commit changes
+    # -------------------------
     conn.commit()
 
-    # Close ONCE
     cursor.close()
     conn.close()
 
-    print("All data inserted successfully ")
+    print("API data inserted successfully!")
 
 except Exception as e:
     print("Error:", e)
