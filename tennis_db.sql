@@ -39,7 +39,7 @@ CREATE TABLE Competitors (
 );
 ---------Create Competitor_Rankings Table--------------
 CREATE TABLE Competitor_Rankings (
-    rank_id serial PRIMARY KEY,
+    rank_id SERIAL PRIMARY KEY,
     rank INT NOT NULL,
     movement INT NOT NULL,
     points INT NOT NULL,
@@ -86,13 +86,12 @@ JOIN competitors comp
 ON r.competitor_id = comp.competitor_id; 
 
 -----Top Ranked Player-----
-
-SELECT TOP 1 c.name, r.points
+SELECT name, points
 FROM competitors c
 JOIN competitor_rankings r
 ON c.competitor_id = r.competitor_id
-ORDER BY r.points DESC;
-
+ORDER BY points DESC
+LIMIT 1;
 
 -----Count Competitions per Category -------
 SELECT 
